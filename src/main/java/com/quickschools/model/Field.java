@@ -24,9 +24,6 @@ public class Field<E extends Entity> {
         }
     }
 
-    public String getName() {
-        return name;
-    }
 
     public E getEntity() {
         return entity;
@@ -48,5 +45,10 @@ public class Field<E extends Entity> {
         int result = entity != null ? entity.hashCode() : 0;
         result = 31 * result + (name != null ? name.hashCode() : 0);
         return result;
+    }
+
+    @Override
+    public String toString() {
+        return entity + "." + name;
     }
 }

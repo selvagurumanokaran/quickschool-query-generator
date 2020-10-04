@@ -5,76 +5,85 @@ import com.quickschools.model.Field;
 import com.quickschools.model.Join;
 
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class SQLGenerator {
-    private static Set<String> expandField(Field<? extends Entity> field) {
-        Set<String> set = new HashSet<>();
-        set.add(field.getEntity() + "." + field.getName());
-        return set;
-    }
 
-    private static Set<String> mergeSet(Set<String> list1, Set<String> list2) {
-        return Stream.concat(list1.stream(), list2.stream()).collect(Collectors.toSet());
+
+    public SQLGenerator() {
     }
 
     public String generate(List<Field<? extends Entity>> fields, List<Join<?, ?>> joins) {
-        Objects.requireNonNull(fields);
-        if (fields.isEmpty())
-            throw new IllegalArgumentException("The fields can not be empty.");
-        Objects.requireNonNull(joins);
-        Set<Join<?, ?>> joinSet = new HashSet<>(joins);
-        List<String> fieldNames = new ArrayList<>();
-        List<String> tables = new ArrayList<>();
-        List<String> conditions = new ArrayList<>();
-        Map<Entity, Set<String>> result = new HashMap<>();
+
+        Map<Entity, Set<String>> tableColumnsMap = groupColumnsByEntity(fields);
+
+        Set<Join<?, ?>> joinSet = removeDuplicateJoins(joins);
+        if (joins.isEmpty()) return generateSqlWithSingleTable(tableColumnsMap);
+
+        Set<String> tables = new HashSet<>();
+        Set<String> columns = new HashSet<>();
+        Set<String> conditions = new HashSet<>();
+
+        Set<Entity> visitedEntitySet = new HashSet<>();
+
+        for (Join<?, ?> join : joinSet) {
+            Field<?> primaryKeyFirst = join.getPrimaryKeyFirst();
+            Field<?> primaryKeySecond = join.getPrimaryKeySecond();
+
+            tables.add(primaryKeyFirst.getEntity().toString());
+            tables.add(primaryKeySecond.getEntity().toString());
+
+            columns.addAll(getColumnNames(tableColumnsMap, primaryKeyFirst));
+            columns.addAll(getColumnNames(tableColumnsMap, primaryKeySecond));
+
+            conditions.add(join.getCondition());
+
+            visitedEntitySet.add(primaryKeyFirst.getEntity());
+            visitedEntitySet.add(primaryKeySecond.getEntity());
+
+        }
+        if (visitedEntitySet.size() != tableColumnsMap.size()) {
+            throw new IllegalArgumentException("One or more join is missing to form SQL.");
+        }
+        return generateSqlWithMultipleTable(tables, columns, conditions);
+    }
+
+    private Map<Entity, Set<String>> groupColumnsByEntity(List<Field<? extends Entity>> fields) {
+        Map<Entity, Set<String>> tableColumnsMap = new HashMap<>();
+        if (fields == null || fields.isEmpty())
+            throw new IllegalArgumentException("One or more fields required.");
         for (Field<? extends Entity> field : fields) {
             Objects.requireNonNull(field, "Field cannot be null.");
             field.getValue();
-            result.merge(field.getEntity(), expandField(field), SQLGenerator::mergeSet);
+            Set<String> names = tableColumnsMap.computeIfAbsent(field.getEntity(), k -> new HashSet<>());
+            names.add(field.toString());
         }
-        if (joins.isEmpty()) {
-            if (result.size() > 1)
-                throw new IllegalArgumentException("One or more join is missing to form SQL.");
-            Map.Entry<Entity, Set<String>> entry = result.entrySet().iterator().next();
-            return "SELECT " + String.join(", ", entry.getValue()) + " FROM " + entry.getKey() + ";";
-        }
-        for (Join<?, ?> join : joinSet) {
-            Field<? extends Entity> primaryKeyFirst = Objects.requireNonNull(
-                    join.getPrimaryKeyFirst(), "One of the field is null in Join.");
-            Field<? extends Entity> primaryKeySecond = Objects.requireNonNull(
-                    join.getPrimaryKeySecond(), "One of the field is null in Join.");
+        return tableColumnsMap;
+    }
 
-            Entity primaryKeyFirstEntity = primaryKeyFirst.getEntity();
-            Set<String> firstTableFieldNames = result.remove(primaryKeyFirstEntity);
-            String primaryKeyFirstName = primaryKeyFirst.getName();
-            if (firstTableFieldNames == null) {
-                throw new IllegalArgumentException(
-                        String.format("The key %s in Join %s doesn't represent any entity.", primaryKeyFirstName, join)
-                );
-            }
-            Entity primaryKeySecondEntity = primaryKeySecond.getEntity();
-            Set<String> secondTableFieldNames = result.remove(primaryKeySecondEntity);
-            String primaryKeySecondName = primaryKeySecond.getName();
-            if (secondTableFieldNames == null) {
-                throw new IllegalArgumentException(
-                        String.format("The key %s in Join %s doesn't represent any entity.", primaryKeySecondName, join)
-                );
-            }
-            conditions.add(primaryKeyFirstEntity.toString() +
-                    "." + primaryKeyFirstName + " = " + primaryKeySecondEntity.toString() +
-                    "." + primaryKeySecondName);
-            fieldNames.addAll(firstTableFieldNames);
-            fieldNames.addAll(secondTableFieldNames);
-            tables.add(primaryKeyFirstEntity.toString());
-            tables.add(primaryKeySecondEntity.toString());
-        }
-        if (result.size() > 0) {
+    private Set<String> getColumnNames(Map<Entity, Set<String>> tableColumnsMap, Field<? extends Entity> field) {
+        Set<String> columnNames = tableColumnsMap.get(field.getEntity());
+        if (columnNames == null)
+            throw new IllegalArgumentException(String.format("Invalid field %s in join.", field));
+        return columnNames;
+    }
+
+
+    private String generateSqlWithSingleTable(Map<Entity, Set<String>> tableColumnsMap) {
+        if (tableColumnsMap.size() > 1)
             throw new IllegalArgumentException("One or more join is missing to form SQL.");
-        }
+        Map.Entry<Entity, Set<String>> entry = tableColumnsMap.entrySet().iterator().next();
+        return "SELECT " + String.join(", ", entry.getValue()) + " FROM " + entry.getKey() + ";";
+    }
+
+    private Set<Join<?, ?>> removeDuplicateJoins(List<Join<?, ?>> joins) {
+        if (joins == null)
+            throw new IllegalArgumentException("Parameter joins cannot be null.");
+        return new HashSet<>(joins);
+    }
+
+    private String generateSqlWithMultipleTable(Set<String> tables, Set<String> columns, Set<String> conditions) {
         return "SELECT " +
-                String.join(", ", fieldNames) +
+                String.join(", ", columns) +
                 " FROM " +
                 String.join(", ", tables) +
                 " WHERE " +

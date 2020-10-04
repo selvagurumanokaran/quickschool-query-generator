@@ -7,8 +7,8 @@ public class Join<S extends Field<?>, T extends Field<?>> {
     T primaryKeySecond;
 
     public Join(S primaryKeyFirst, T primaryKeySecond) {
-        this.primaryKeyFirst = primaryKeyFirst;
-        this.primaryKeySecond = primaryKeySecond;
+        this.primaryKeyFirst = Objects.requireNonNull(primaryKeyFirst, "One of the fields is null.");
+        this.primaryKeySecond = Objects.requireNonNull(primaryKeySecond, "One of the fields is null.");
     }
 
     public S getPrimaryKeyFirst() {
@@ -17,6 +17,10 @@ public class Join<S extends Field<?>, T extends Field<?>> {
 
     public T getPrimaryKeySecond() {
         return primaryKeySecond;
+    }
+
+    public String getCondition() {
+        return primaryKeyFirst.toString() + " = " + primaryKeySecond.toString();
     }
 
     @Override
