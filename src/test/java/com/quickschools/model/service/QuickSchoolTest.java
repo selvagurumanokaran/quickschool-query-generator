@@ -1,6 +1,7 @@
-package com.quickschools.model;
+package com.quickschools.model.service;
 
-import com.quickschools.model.service.SQLGenerator;
+import com.quickschools.model.*;
+import com.quickschools.service.SQLGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

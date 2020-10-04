@@ -1,4 +1,4 @@
-package com.quickschools.model.service;
+package com.quickschools.service;
 
 import com.quickschools.model.Entity;
 import com.quickschools.model.Field;
